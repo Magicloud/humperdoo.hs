@@ -9,6 +9,7 @@ copyright:           "None"
 extra-source-files:
 - README.md
 - ChangeLog.md
+- humperdoo.glade
 
 # Metadata used when publishing your package
 # synopsis:            Short description of your package
@@ -21,6 +22,15 @@ description:         Please see the README on GitHub at <https://github.com/magi
 
 dependencies:
 - base >= 4.7 && < 5
+- gi-gtk
+- base-unicode-symbols
+- text
+- directory
+- filepath
+- haskell-gi-base
+- gi-gio
+- gi-gdkpixbuf
+- process
 
 library:
   source-dirs: src
@@ -33,6 +43,7 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
+    - -Wall
     dependencies:
     - humperdoo
 
