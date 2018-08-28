@@ -31,6 +31,9 @@ dependencies:
 - gi-gio
 - gi-gdkpixbuf
 - process
+- gi-pango
+- gi-gdk
+- split
 
 library:
   source-dirs: src

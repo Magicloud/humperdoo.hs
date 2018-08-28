@@ -55,31 +55,12 @@
                   </packing>
                 </child>
                 <child>
-                  <object class="GtkButtonBox" id="boxButton">
+                  <object class="GtkEntry" id="txtURI">
                     <property name="visible">True</property>
-                    <property name="can_focus">False</property>
-                    <property name="layout_style">start</property>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
-                    <child>
-                      <placeholder/>
-                    </child>
+                    <property name="can_focus">True</property>
+                    <property name="truncate_multiline">True</property>
+                    <property name="primary_icon_stock">gtk-harddisk</property>
+                    <signal name="button-press-event" handler="on_txtURI_button_press_event" swapped="no"/>
                   </object>
                   <packing>
                     <property name="expand">False</property>

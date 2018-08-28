@@ -9,6 +9,7 @@ import           Control.Monad
 import           Control.Monad.Unicode
 import           Data.Bool.Unicode
 import           Data.Eq.Unicode
+import           Data.List.Split
 -- import           Data.Foldable.Unicode
 import           Data.Function.Unicode
 import           Data.GI.Base.GValue
@@ -18,13 +19,15 @@ import           Data.List.Unicode
 import           Data.Maybe
 -- import           Data.Monoid.Unicode
 -- import           Data.Ord.Unicode
-import           Data.Text             ( Text, pack, unpack )
+import           Data.Text             as Text ( Text, pack, unpack )
 import           GHC.Int
+import           GI.Gdk
 import           GI.GdkPixbuf
 import           GI.Gio
 import qualified GI.Gtk                as Gtk
+import           GI.Pango
 import           Paths_humperdoo
--- import           Prelude.Unicode
+import           Prelude.Unicode
 import           System.Directory
 import           System.FilePath
 import           System.Process
@@ -100,7 +103,7 @@ enterFolder ∷ IORef Conf → FilePath → IO ()
 enterFolder c folder = do
   modifyIORef c $ \conf → conf { confCurrFolder = folder }
   builder ← confBuilder <$> readIORef c
-  folderItems ← listDirectory folder ≫= fmap (detachDir ∘ folder1st) ∘ attachDir ∘ map ((</>) folder) ∘ hidden -- TODO inotify the folder
+  folderItems ← listDirectory folder ≫= fmap (detachDir ∘ folder1st) ∘ attachDir ∘ map (folder </>) ∘ hidden -- TODO inotify the folder
   lsFolderEntries ← getGtkObj builder "lsFolderEntries" Gtk.ListStore
   #clear lsFolderEntries
   mapM_ (\fp → do
@@ -117,13 +120,15 @@ enterFolder c folder = do
 
     filePath ← toGValue $ Just fp
     #setValue lsFolderEntries p 2 filePath) folderItems
-  boxButton ← getGtkObj builder "boxButton" Gtk.ButtonBox
-  #foreach boxButton $ \child → #remove boxButton child
-  mapM_ (\(name, place) → do
-    btn ← Gtk.buttonNewWithLabel name
-    void $ Gtk.on btn #clicked $ enterFolder c place
-    #showAll btn
-    #add boxButton btn) $ zipWith (\a b → (pack a, joinPath b)) (splitPath folder) (tail $ inits $ splitPath folder)
+  txtURI ← getGtkObj builder "txtURI" Gtk.Entry
+  set txtURI [ #editable := False ]
+  #getWindow txtURI ≫= \case
+    Just win → do
+      display ← #getDisplay win
+      cursor ← cursorNewFromName display "pointer"
+      windowSetCursor win cursor
+    Nothing → error "No window for txtURI"
+  #setText txtURI $ pack $ replace [pathSeparator] [' ', pathSeparator, ' '] folder
 
 iconViewItemActivated ∷ IORef Conf → Gtk.IconView → Gtk.TreePath → IO ()
 iconViewItemActivated c w p = do
@@ -136,6 +141,20 @@ iconViewItemActivated c w p = do
     False → do
       void $ spawnCommand $ "xdg-open " ⧺ fp
       Gtk.mainQuit
+
+replace ∷ Eq a ⇒ [a] → [a] → [a] → [a]
+replace f t s = intercalate t $ splitOn f s
+
+applyTuple2 ∷ (a, a) → (a → b) → (b, b)
+applyTuple2 (x, y) f = (f x, f y)
+
+isAtSeperator ∷ Int → String → Bool
+isAtSeperator i s = case i of
+  0 → True -- space before root
+  1 → True -- root
+  2 → True -- space after root
+  3 → True -- 1st lvl
+  _ → any (\j → take 3 (drop j s) ≡ [' ', pathSeparator, ' ']) ([ i - 2, i - 1, i ] ∷ [Int])
 
 main ∷ IO ()
 main = do
@@ -157,9 +176,41 @@ main = do
   btnOpen ← getGtkObj builder "btnOpen" Gtk.Button
   void $ Gtk.on btnOpen #clicked $ do
     selectedItems ← #getSelectedItems ivFolderEntries
-    if (¬) $ null selectedItems
-       then iconViewItemActivated state ivFolderEntries $ head selectedItems
-       else return ()
+    when ((¬) $ null selectedItems) $
+      iconViewItemActivated state ivFolderEntries $ head selectedItems
+
+  txtURI ← getGtkObj builder "txtURI" Gtk.Entry
+  void $ Gtk.on txtURI #iconPress $ \_eip eb →
+    Gtk.get eb #type ≫= \case
+      EventTypeButtonPress → enterFolder state "/"
+      _ → return ()
+  void $ Gtk.on txtURI #buttonPressEvent $ \eb → do
+    Gtk.get eb #type ≫= \case
+      EventTypeButtonPress → do
+        px ← ceiling <$> Gtk.get eb #x
+        py ← ceiling <$> Gtk.get eb #y
+        layout ← #getLayout txtURI
+        (lx, ly) ← #getLayoutOffsets txtURI
+        (isIn, index_, _trailing) ← #xyToIndex layout (lx + px ⋅ SCALE) (ly + py ⋅ SCALE)
+        str ← unpack <$> #getText txtURI
+        let index = fromIntegral index_
+            (p, s) = flip applyTuple2 (replace  [' ', pathSeparator, ' '] [pathSeparator]) $ splitAt index str
+            mNextSeparatorAt = elemIndex pathSeparator s
+        if isIn
+           then if isAtSeperator index str ∨ isNothing mNextSeparatorAt
+                   then return ()
+                   else enterFolder state $ p ⧺ take (fromJust mNextSeparatorAt) s
+             -- If the widget is shorter, hide initialize parts.
+           else do
+             set txtURI [ #editable := True ]
+             #getWindow txtURI ≫= \case
+               Just win → windowSetCursor win (Nothing ∷ Maybe Cursor)
+               Nothing → error "No window for txtURI"
+             confCurrFolder <$> readIORef state ≫= #setText txtURI ∘ pack
+      _ → return ()
+    return False
+  void $ Gtk.on txtURI #activate $
+    #getText txtURI ≫= enterFolder state ∘ unpack
 
   enterFolder state initFolder
 
